@@ -45,3 +45,38 @@ pdf_path = "/mnt/data/VBTN_Official_Purchase_Order_VB-TN-FLEET-001.pdf"
 pdf.output(pdf_path)
 
 pdf_path
+
+account_balance
+account_balance = 1000000.00 - total_cost
+quary_eps_balance
+quary_eps_balance = 500000.00 + total_cost
+from fpdf import FPDF
+import qrcode
+import os
+import tempfile
+# Create QR code
+qr_data = "https://verdigrisbotanica.org/vbtn-official-purchase
+_order_vb-tn-fleet-001"
+qr = qrcode.QRCode(version=1, box_size=10, border=5
+)
+qr.add_data(qr_data)
+qr.make(fit=True)
+img = qr.make_image(fill="black", back_color="white")
+# Save QR code to a temporary file
+temp_dir = tempfile.gettempdir()
+qr_path = os.path.join(temp_dir, "vbtn_qr.png")
+img.save(qr_path)
+lines = [
+    "Purchase Order Number: VB-TN-FLEET-001",
+    "Date: 2024-06-15",
+    "",
+    "Vendor Information:",
+    "Name: Verdigris Botanica Tribal Nation Trust",
+    "Address: 728 Crescent Way, Radcliff, KY 40160",
+    "Contact:
+    Alaina Letresia Michelle Padgett, Postmaster General",
+    "Phone: (270) 351-1234",
+    "Email:
+    
+    pull_github_repositorys
+    
