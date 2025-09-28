@@ -1,0 +1,9 @@
+imapclient==2.3.1
+mail-parser==3.14.0
+python-magic==0.4.27
+PyPDF2==3.1.1
+Pillow==10.0.0
+requests==2.31.0
+python-dateutil==2.8.2
+# Optional: pytesseract for OCR
+pytesseract==0.3.10

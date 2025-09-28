@@ -1,0 +1,145 @@
+name: Process Verdigris Emails & Telemetry
+
+on:
+  schedule:
+    # run every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: process-emails
+  cancel-in-progress: true
+
+env:
+  # Default output folder inside the repo/workspace (can be overridden via secret or env)
+  OUTPUT_DIR: ${{ secrets.OUTPUT_DIR || 'output' }}
+  # Comma-separated list of recipient addresses to process
+  TARGET_RECIPIENTS: "verdigris+expenses@assist.intuit.com,verdigris+sales@assist.intuit.com,finance@verdigrisbotanicanation.org,alaina@verdigrisbotanicanation.org,vbtnpostalauthority@outlook.com,vbtnpostalauthority2@outlook.com"
+  # Optional: set to 'true' (as a secret) if you want OCR support (installs tesseract)
+  INSTALL_TESSERACT: ${{ secrets.INSTALL_TESSERACT }}
+  # Clearing/payment settings (set as repository secrets)
+  CLEARING_MODE: ${{ secrets.CLEARING_MODE || 'dry-run' }} # 'dry-run' or 'auto'
+  APPROVAL_THRESHOLD: ${{ secrets.APPROVAL_THRESHOLD || '1000.00' }}
+  PAYMENT_API_URL: ${{ secrets.PAYMENT_API_URL }}
+  ACCOUNTING_API_URL: ${{ secrets.ACCOUNTING_API_URL }}
+
+jobs:
+  process-emails:
+    name: Process PO / Bills / Invoices / Sales (with telemetry + clearing)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system deps (tesseract if requested)
+        if: env.INSTALL_TESSERACT == 'true'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y tesseract-ocr libtesseract-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install imapclient mail-parser python-magic PyPDF2 pillow requests; fi
+
+      - name: Ensure output directory exists
+        run: mkdir -p "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}"
+
+      - name: Run email processor
+        id: run-processor
+        env:
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+          IMAP_PORT: ${{ secrets.IMAP_PORT || '993' }}
+          OUTPUT_DIR: ${{ env.OUTPUT_DIR }}
+          TARGET_RECIPIENTS: ${{ env.TARGET_RECIPIENTS }}
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+          TELEMETRY_API_KEY: ${{ secrets.TELEMETRY_API_KEY }}
+        run: |
+          set -eo pipefail
+          echo "Starting email processor"
+          python scripts/process_emails.py --output-dir "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}" --targets "${{ env.TARGET_RECIPIENTS }}"
+
+      - name: Prepare clearing inputs
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}/clearing"
+          ls -la "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}"
+
+      - name: Run clearinghouse (dry-run or auto)
+        id: run-clearing
+        env:
+          CLEARING_MODE: ${{ env.CLEARING_MODE }}
+          APPROVAL_THRESHOLD: ${{ env.APPROVAL_THRESHOLD }}
+          PAYMENT_API_URL: ${{ secrets.PAYMENT_API_URL }}
+          PAYMENT_API_KEY: ${{ secrets.PAYMENT_API_KEY }}
+          ACCOUNTING_API_URL: ${{ secrets.ACCOUNTING_API_URL }}
+          ACCOUNTING_API_TOKEN: ${{ secrets.ACCOUNTING_API_TOKEN }}
+          OUTPUT_DIR: ${{ env.OUTPUT_DIR }}
+        run: |
+          set -eo pipefail
+          echo "Clearing mode: $CLEARING_MODE"
+          python scripts/clear_payments.py --ledger "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}/ledger.csv" --output "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}/clearing" --mode "$CLEARING_MODE" --threshold "$APPROVAL_THRESHOLD"
+
+      - name: Upload clearing artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clearing-report
+          path: ${{ github.workspace }}/${{ env.OUTPUT_DIR }}/clearing
+          retention-days: 30
+
+      - name: Upload processed artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-files
+          path: ${{ github.workspace }}/
+            ${{ env.OUTPUT_DIR }}
+          retention-days: 30
+
+      - name: Upload telemetry
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry
+          path: ${{ github.workspace }}/${{ env.OUTPUT_DIR }}/telemetry.json
+          retention-days: 90
+
+      - name: Push telemetry to endpoint (optional)
+        if: secrets.TELEMETRY_ENDPOINT
+        env:
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+          TELEMETRY_API_KEY: ${{ secrets.TELEMETRY_API_KEY }}
+          TELEMETRY_FILE: ${{ github.workspace }}/${{ env.OUTPUT_DIR }}/telemetry.json
+        run: |
+          if [ -f "$TELEMETRY_FILE" ]; then
+            echo "Posting telemetry to endpoint"
+            curl -s -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $TELEMETRY_API_KEY" --data-binary @"$TELEMETRY_FILE" "$TELEMETRY_ENDPOINT" || echo "Telemetry POST failed"
+          else
+            echo "No telemetry file to post"
+          fi
+
+      - name: Append workflow summary
+        if: always()
+        run: |
+          echo "# Email Processor run summary" >> $GITHUB_STEP_SUMMARY
+          echo "- TARGET_RECIPIENTS: ${{ env.TARGET_RECIPIENTS }}" >> $GITHUB_STEP_SUMMARY
+          echo "- OUTPUT_DIR: ${{ env.OUTPUT_DIR }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Clearing mode: ${{ env.CLEARING_MODE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Telemetry artifact: telemetry.json" >> $GITHUB_STEP_SUMMARY
