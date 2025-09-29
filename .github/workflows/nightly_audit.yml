@@ -1,0 +1,50 @@
+name: Nightly Audit & Archive
+
+on:
+  schedule:
+    # daily at 23:59 UTC
+    - cron: '59 23 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  nightly-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install imapclient mail-parser requests twilio python-dateutil; fi
+
+      - name: Run nightly audit
+        env:
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+          IMAP_PORT: ${{ secrets.IMAP_PORT || '993' }}
+          TARGET_RECIPIENTS: ${{ secrets.TARGET_RECIPIENTS || 'vbtnpostalauthority@outlook.com,alaina.padgett@verdigrisbotanicanation.appleaccount.com' }}
+          OUTPUT_DIR: ${{ secrets.OUTPUT_DIR || 'output' }}
+          TWILIO_SID: ${{ secrets.TWILIO_SID }}
+          TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
+          PHONE_NUMBERS: ${{ secrets.PHONE_NUMBERS }}
+          HP_FAX_EMAIL: ${{ secrets.HP_FAX_EMAIL }}
+          CLOUD_ARCHIVE_URL: ${{ secrets.CLOUD_ARCHIVE_URL }}
+          CLOUD_ARCHIVE_KEY: ${{ secrets.CLOUD_ARCHIVE_KEY }}
+        run: |
+          set -eo pipefail
+          python scripts/nightly_audit.py --output-dir "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}" --targets "${{ env.TARGET_RECIPIENTS }}"
+
+      - name: Upload nightly archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-archive
+          path: ${{ github.workspace }}/${{ secrets.OUTPUT_DIR || 'output' }}/daily
+          retention-days: 90

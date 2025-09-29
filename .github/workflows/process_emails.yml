@@ -13,8 +13,8 @@ concurrency:
 env:
   # Default output folder inside the repo/workspace (can be overridden via secret or env)
   OUTPUT_DIR: ${{ secrets.OUTPUT_DIR || 'output' }}
-  # Comma-separated list of recipient addresses to process
-  TARGET_RECIPIENTS: "verdigris+expenses@assist.intuit.com,verdigris+sales@assist.intuit.com,finance@verdigrisbotanicanation.org,alaina@verdigrisbotanicanation.org,vbtnpostalauthority@outlook.com,vbtnpostalauthority2@outlook.com"
+  # Comma-separated list of recipient addresses to process; primary Outlook and Apple fallback included
+  TARGET_RECIPIENTS: "vbtnpostalauthority@outlook.com,alaina.padgett@verdigrisbotanicanation.appleaccount.com,verdigris+expenses@assist.intuit.com,verdigris+sales@assist.intuit.com,finance@verdigrisbotanicanation.org,vbtnpostalauthority2@outlook.com"
   # Optional: set to 'true' (as a secret) if you want OCR support (installs tesseract)
   INSTALL_TESSERACT: ${{ secrets.INSTALL_TESSERACT }}
   # Clearing/payment settings (set as repository secrets)
@@ -22,6 +22,13 @@ env:
   APPROVAL_THRESHOLD: ${{ secrets.APPROVAL_THRESHOLD || '1000.00' }}
   PAYMENT_API_URL: ${{ secrets.PAYMENT_API_URL }}
   ACCOUNTING_API_URL: ${{ secrets.ACCOUNTING_API_URL }}
+  # Integration endpoints / credentials for reporting (set as secrets)
+  COUPA_API_URL: ${{ secrets.COUPA_API_URL }}
+  COUPA_API_KEY: ${{ secrets.COUPA_API_KEY }}
+  PIEE_API_URL: ${{ secrets.PIEE_API_URL }}
+  PIEE_API_KEY: ${{ secrets.PIEE_API_KEY }}
+  SAM_API_URL: ${{ secrets.SAM_API_URL }}
+  SAM_API_KEY: ${{ secrets.SAM_API_KEY }}
 
 jobs:
   process-emails:
@@ -134,6 +141,20 @@ jobs:
           else
             echo "No telemetry file to post"
           fi
+
+      - name: Run reporting integrations (Coupa / PIEE / SAM.gov)
+        if: always()
+        env:
+          OUTPUT_DIR: ${{ env.OUTPUT_DIR }}
+          COUPA_API_URL: ${{ secrets.COUPA_API_URL }}
+          COUPA_API_KEY: ${{ secrets.COUPA_API_KEY }}
+          PIEE_API_URL: ${{ secrets.PIEE_API_URL }}
+          PIEE_API_KEY: ${{ secrets.PIEE_API_KEY }}
+          SAM_API_URL: ${{ secrets.SAM_API_URL }}
+          SAM_API_KEY: ${{ secrets.SAM_API_KEY }}
+        run: |
+          echo "Running reporting integrations: Coupa, PIEE, SAM"
+          python scripts/integrations.py --input "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}" || echo "Integrations step failed"
 
       - name: Append workflow summary
         if: always()
