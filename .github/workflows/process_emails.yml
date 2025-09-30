@@ -83,6 +83,19 @@ jobs:
           echo "Starting email processor"
           python scripts/process_emails.py --output-dir "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}" --targets "${{ env.TARGET_RECIPIENTS }}"
 
+      - name: Debug: show output directory contents
+        if: always()
+        run: |
+          echo "Listing contents of $GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}"
+          ls -la "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}" || true
+          if [ -f "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}/telemetry.json" ]; then
+            echo "--- telemetry.json (first 200 lines) ---"
+            head -n 200 "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}/telemetry.json" || true
+            echo "--- end telemetry preview ---"
+          else
+            echo "No telemetry.json found"
+          fi
+
       - name: Prepare clearing inputs
         run: |
           mkdir -p "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}/clearing"
@@ -116,8 +129,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: processed-files
-          path: ${{ github.workspace }}/
-            ${{ env.OUTPUT_DIR }}
+          path: "${{ github.workspace }}/${{ env.OUTPUT_DIR }}"
           retention-days: 30
 
       - name: Upload telemetry
@@ -137,7 +149,7 @@ jobs:
         run: |
           if [ -f "$TELEMETRY_FILE" ]; then
             echo "Posting telemetry to endpoint"
-            curl -s -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $TELEMETRY_API_KEY" --data-binary @"$TELEMETRY_FILE" "$TELEMETRY_ENDPOINT" || echo "Telemetry POST failed"
+            curl -s -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $TELEMETRY_API_KEY" --data-binary @"$TELEMETRY_FILE" "$TELEMETRY_ENDPOINT"
           else
             echo "No telemetry file to post"
           fi
@@ -154,7 +166,7 @@ jobs:
           SAM_API_KEY: ${{ secrets.SAM_API_KEY }}
         run: |
           echo "Running reporting integrations: Coupa, PIEE, SAM"
-          python scripts/integrations.py --input "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}" || echo "Integrations step failed"
+          python scripts/integrations.py --input "$GITHUB_WORKSPACE/${{ env.OUTPUT_DIR }}"
 
       - name: Append workflow summary
         if: always()
