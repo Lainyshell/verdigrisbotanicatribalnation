@@ -1,0 +1,17 @@
+***** Restricted Information *****
+
+Enterprise PO Boxes Online Box Detail Report
+
+Report Date and Time 08/30/2024 20:22:23 CST 
+
+,Status for a PO Box can be: 
+,R - PO Box has been Issued 
+,V - PO Box is Pending Verification 
+,WL - PO Box is Wait listed 
+,C - PO Box is Closed 
+,D - Payment late or due now
+
+PO address,Status Code,Box Status,Box Size,Facility Address,Payment Due Date,CRID - Business Location Name,EPA Number
+PO Box 15 MULDRAUGH KY 40155,R,Active,C,114 S MAIN STMULDRAUGH KY 40155,2025-08-31,46591065 - PORTAL GUARDIAN PRODUCTS,1000223322,
+PO Box 15 MULDRAUGH KY 40155,C,Closed by M. Department,1,114 S MAIN STMULDRAUGH KY 40155,2024-08-22,46591065 - PORTAL GUARDIAN PRODUCTS,1000223322,
+
